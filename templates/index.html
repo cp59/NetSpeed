@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/materialize.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>NetSpeed</title>
+</head>
+<script>
+    function humenNetSpeed(speed) {
+        var i = Math.floor(Math.log(speed) / Math.log(1024));
+        return (speed / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['bps', 'kbps', 'Mbps', 'Gbps', 'Tbps'][i];
+    }
+    function humenFileSize(size) {
+        var i = Math.floor(Math.log(size) / Math.log(1024));
+        return (size / Math.pow(1024, i)).toFixed(2) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
+    };
+    var uxhr = new XMLHttpRequest();
+    var xhr = new XMLHttpRequest();
+    function stopTest() {
+        xhr.abort();
+        uxhr.abort();
+        $("#downloadCard").removeClass("hoverEffect");
+        $("#uploadCard").removeClass("hoverEffect");
+        $("#startTestBtn").removeClass("red");
+        $("#startTestBtn").html('<i class="material-icons left">start</i>Start');
+        $("#startTestBtn").attr("href", "javascript:startTest()");
+    }
+    async function getPing() {
+        const startTime = new Date();
+        await fetch('/emptyData');
+        const endTime = new Date();
+        const ping = endTime.getTime() - startTime.getTime();
+        return ping;
+    }
+    async function startTest() {
+        var downloaded = 0,
+            uploaded = 0;
+        var downloadTimer, uploadTimer;
+        var downSpeed = 0,
+            upSpeed = 0;
+        var lastDownTime = 0;
+        lastUpTime = 0;
+        const average = arr => arr.reduce((p, c) => p + c, 0) / arr.length;
+        var downSpeedArr = [],
+            upSpeedArr = [];
+        var downStartTime = new Date().getTime();
+        uxhr = new XMLHttpRequest();
+        xhr = new XMLHttpRequest();
+        document.getElementById("downloadProgress").style.width = "0";
+        document.getElementById("uploadProgress").style.width = "0";
+        $("#pingCard").addClass("hoverEffect");
+        $("#jitterCard").addClass("hoverEffect");
+        $("#startTestBtn").addClass("red");
+        $("#startTestBtn").html('<i class="material-icons left">stop</i>Stop');
+        $("#startTestBtn").attr("href", "javascript:location.reload()");
+        const latencies = [];
+        for (let i = 0; i < 10; i++) {
+            const ping = await this.getPing();
+            latencies.push(ping);
+            $("#pingLabel").text(ping + "ms");
+            $("#pingProgress").width((5 * (i + 1)) + "%");
+        }
+
+        //Get each latency difference
+        let total1 = 0;
+        for (let i = 0; i < latencies.length - 1; i++) {
+            if (typeof latencies[i] === 'number') {
+
+                total1 += latencies[i + 1] - latencies[i];
+            }
+        }
+        const jitter = total1 / (latencies.length - 1);
+        $("#jitterLabel").text(jitter.toFixed(2) + "ms");
+        $("#pingCard").removeClass("hoverEffect");
+        $("#jitterCard").removeClass("hoverEffect");
+        $("#downloadCard").addClass("hoverEffect");
+        xhr.open('GET', '/download/50mb');
+        uxhr.open('POST', '/upload');
+        uxhr.upload.addEventListener("progress", function (evt) {
+            var endTime = (new Date()).getTime();
+            upSpeed = ((evt.loaded - uploaded) * 1000) / ((endTime - lastUpTime) * 1024);
+            document.getElementById("uploadLabel").innerHTML = humenNetSpeed(upSpeed * 1024 * 8);
+            document.getElementById("uploadProgress").style.width = evt.loaded / evt.total * 100 + "%";
+            upSpeedArr.push(upSpeed * 1024);
+            uploaded = evt.loaded;
+            lastUpTime = endTime;
+        }, false);
+        xhr.addEventListener("progress", function (evt) {
+            var endTime = (new Date()).getTime();
+            downSpeed = ((evt.loaded - downloaded) * 1000) / ((endTime - lastDownTime) * 1024);
+            document.getElementById("downloadLabel").innerHTML = humenNetSpeed(downSpeed * 1024 * 8);
+            document.getElementById("downloadProgress").style.width = evt.loaded / evt.total * 100 + "%";
+            downSpeedArr.push(downSpeed * 1024);
+            downloaded = evt.loaded;
+            lastDownTime = endTime;
+        }, false);
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == XMLHttpRequest.DONE) {
+                document.getElementById("downloadLabel").innerHTML = humenNetSpeed(average(downSpeedArr) * 8);
+                setTimeout(function () {
+                    $("#downloadCard").removeClass("hoverEffect");
+                    $("#downloadCard").removeClass("hoverEffect");
+                    $("#uploadCard").addClass("hoverEffect");
+                    $("#uploadLabel").text("Preparing...");
+                    setTimeout(function () {
+                        var formData = new FormData();
+                        formData.append('file', new Blob([xhr.response], { type: "octet/stream" }), "test.zip");
+                        uxhr.send(formData);
+                    }, 500);
+                }, 1000);
+            }
+        };
+        uxhr.onreadystatechange = function () {
+            if (xhr.readyState == XMLHttpRequest.DONE) {
+                document.getElementById("uploadLabel").innerHTML = humenNetSpeed(average(upSpeedArr) * 8);
+            }
+            $("#uploadCard").removeClass("hoverEffect");
+            $("#startTestBtn").removeClass("red");
+            $("#startTestBtn").html('<i class="material-icons left">start</i>Start');
+            $("#startTestBtn").attr("href", "javascript:startTest()");
+        };
+        xhr.send();
+    }
+</script>
+<style>
+    @font-face {
+        font-family: 'Material Icons';
+        font-style: normal;
+        font-weight: 400;
+        src: local('Material Icons'),
+            local('MaterialIcons-Regular'),
+            url("/static/MaterialIcons-Regular.ttf") format('truetype');
+    }
+
+    .material-icons {
+        font-family: 'Material Icons';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: 'liga';
+        -webkit-font-smoothing: antialiased;
+    }
+
+    .hoverEffect {
+        -webkit-box-shadow: 0 8px 17px 0 rgb(0 0 0 / 20%), 0 6px 20px 0 rgb(0 0 0 / 19%);
+        box-shadow: 0 8px 17px 0 rgb(0 0 0 / 20%), 0 6px 20px 0 rgb(0 0 0 / 19%);
+    }
+</style>
+<script>
+
+</script>
+
+<body>
+    <div class="navbar-fixed">
+        <nav>
+            <div class="nav-wrapper">
+                <a href="#!" class="brand-logo">NetSpeed</a>
+            </div>
+        </nav>
+    </div>
+    <div class="row" style="padding: 10px;margin-bottom:-40px;">
+        <div class="col s12 m6">
+            <div class="card" id="downloadCard">
+                <div class="card-content">
+                    <p>Download</p>
+                    <span class="card-title" id="downloadLabel" style="font-weight: bold;">Wait for start</span>
+                </div>
+                <div class="progress" style="background-color:unset">
+                    <div class="determinate" id="downloadProgress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m6">
+            <div class="card" id="uploadCard">
+                <div class="card-content">
+                    <p>Upload</p>
+                    <span class="card-title" id="uploadLabel" style="font-weight: bold;">Wait for start</span>
+                </div>
+                <div class="progress" style="background-color:unset">
+                    <div class="determinate" id="uploadProgress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m6">
+            <div class="card" id="pingCard">
+                <div class="card-content">
+                    <p>Ping</p>
+                    <span class="card-title" id="pingLabel" style="font-weight: bold;">Wait for start</span>
+                </div>
+                <div class="progress" style="background-color:unset">
+                    <div class="determinate" id="pingProgress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m6">
+            <div class="card" id="jitterCard">
+                <div class="card-content">
+                    <p>Jitter</p>
+                    <span class="card-title" id="jitterLabel" style="font-weight: bold;">Wait for start</span>
+                </div>
+                <div class="progress" style="background-color:unset">
+                    <div class="determinate" id="jitterProgress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="content" style="padding: 10px;">
+        <div class="card">
+            <div class="card-content">
+                <a class="waves-effect btn" id="startTestBtn" href="javascript:startTest()"><i
+                        class="material-icons left">start</i>Start</a>
+            </div>
+        </div>
+    </div>
+</body>
+<script src="/static/jquery-3.6.0.min.js"></script>
+<script src="/static/materialize.min.js"></script>
+
+</html>
